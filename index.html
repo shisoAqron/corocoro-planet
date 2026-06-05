@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <!-- スマホ縦画面前提。ユーザー拡大を禁止して操作のブレを防ぐ -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a2a" />
+  <title>ころころ星あつめ</title>
+
+  <!-- かわいい丸文字フォント（オンライン時のみ。失敗してもsans-serifにフォールバック） -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Mochiy+Pop+One&family=Baloo+2:wght@600;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ゲーム全体をスマホ枠の中に収める -->
+  <div id="app">
+
+    <!-- ===== 上部UI ===== -->
+    <header id="topbar">
+      <div class="toprow title-row">
+        <button id="gearBtn" class="icon-btn" aria-label="サウンド切り替え">⚙️</button>
+        <h1 class="title"><span class="spark">✦</span> ころころ星あつめ <span class="spark">✦</span></h1>
+        <button id="helpBtn" class="icon-btn" aria-label="あそびかた">❓</button>
+      </div>
+
+      <div class="toprow stat-row">
+        <div class="stat-card">
+          <div class="stat-label">★ SCORE</div>
+          <div class="stat-value" id="scoreValue">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">♛ BEST</div>
+          <div class="stat-value" id="bestValue">0</div>
+        </div>
+        <!-- 現在の重力方向インジケータ -->
+        <div class="stat-card grav-card">
+          <div class="stat-label">重力</div>
+          <div class="grav-arrow" id="gravArrow">→</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ===== メイン領域（Canvasに枠・惑星・演出を描画） ===== -->
+    <main id="stage">
+      <canvas id="game"></canvas>
+
+      <!-- はみ出し警告バナー -->
+      <div id="warning" class="warning hidden">
+        <div class="warning-main">⚠️ ピンチ！</div>
+        <div class="warning-sub">はみだしそう！</div>
+      </div>
+    </main>
+
+    <!-- ===== 下部UI ===== -->
+    <footer id="bottombar">
+      <div class="hint">
+        <span class="mascot">⭐</span>
+        <span id="hintText">枠の外をさわって、はなすと星が飛びこむよ！<br><b>投げ入れた向きに重力が変わる！</b></span>
+      </div>
+    </footer>
+
+    <!-- ===== デバッグパネル（隕石などの調整用） ===== -->
+    <div id="debugPanel" class="debug-panel">
+      <button id="debugToggle" class="debug-toggle" aria-label="デバッグ">🛠</button>
+      <div id="debugBody" class="debug-body hidden">
+        <div class="debug-title">DEBUG</div>
+        <label class="debug-row">
+          <input type="checkbox" id="dbgMeteor" checked /> 隕石を出す
+        </label>
+        <label class="debug-row col">
+          <span>出現間隔: <b id="dbgIntervalVal">6.0</b> 秒</span>
+          <input type="range" id="dbgInterval" min="1" max="15" step="0.5" value="6" />
+        </label>
+        <button id="dbgSpawnNow" class="btn-mini">今すぐ1個 飛ばす</button>
+      </div>
+    </div>
+
+    <!-- ===== チュートリアル モーダル ===== -->
+    <div id="tutorial" class="modal-overlay">
+      <div class="modal tutorial-modal">
+        <h2 class="modal-title">✦ あそびかた ✦</h2>
+
+        <div class="tut-slides">
+          <!-- スライド1: 左から -->
+          <div class="tut-slide active" data-slide="0">
+            <div class="tut-diagram">
+              <div class="tut-frame">
+                <div class="tut-planets right">🪐🌍🔵🔴</div>
+                <div class="tut-grav-arrow">➡️</div>
+              </div>
+              <div class="tut-incoming left">🔵<span class="tut-trail">⟶</span></div>
+            </div>
+            <p class="tut-text"><b>左から</b>投げ入れると…<br><span class="accent">重力は右へ！</span><br>星たちが右に寄るよ。</p>
+          </div>
+
+          <!-- スライド2: 下から -->
+          <div class="tut-slide" data-slide="1">
+            <div class="tut-diagram">
+              <div class="tut-frame">
+                <div class="tut-planets top">🪐🌍🔵🔴</div>
+                <div class="tut-grav-arrow up">⬆️</div>
+              </div>
+              <div class="tut-incoming bottom">🔵<span class="tut-trail up">⟶</span></div>
+            </div>
+            <p class="tut-text"><b>下から</b>投げ入れると…<br><span class="accent">重力は上へ！</span><br>星たちが上に寄るよ。</p>
+          </div>
+
+          <!-- スライド3: 合体&はみ出し -->
+          <div class="tut-slide" data-slide="2">
+            <div class="tut-diagram simple">
+              <div class="tut-merge">🔵 + 🔵 → 🌍</div>
+            </div>
+            <p class="tut-text">同じ星どうしがくっつくと<br><span class="accent">合体して大きく！</span><br>枠から<b>はみ出さない</b>ように詰めよう。</p>
+          </div>
+        </div>
+
+        <div class="tut-controls">
+          <div class="tut-dots">
+            <span class="dot active" data-dot="0"></span>
+            <span class="dot" data-dot="1"></span>
+            <span class="dot" data-dot="2"></span>
+          </div>
+          <button id="tutNext" class="btn primary">つぎへ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== ゲームオーバー モーダル ===== -->
+    <div id="gameover" class="modal-overlay hidden">
+      <div class="modal">
+        <h2 class="modal-title gg">GAME OVER</h2>
+        <p class="gg-sub">星があふれちゃった！</p>
+        <div class="gg-scores">
+          <div><span class="gg-label">SCORE</span><span class="gg-num" id="finalScore">0</span></div>
+          <div><span class="gg-label">BEST</span><span class="gg-num" id="finalBest">0</span></div>
+        </div>
+        <p id="newRecord" class="new-record hidden">🎉 ハイスコア更新！ 🎉</p>
+        <button id="retryBtn" class="btn primary big">もういちど</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
