@@ -16,7 +16,12 @@
   --text: #eef3ff;
 }
 
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  /* ダブルタップによるズーム・タップ遅延を無効化（iOS Safari対策） */
+  touch-action: manipulation;
+}
 
 html, body {
   margin: 0;
@@ -31,6 +36,10 @@ html, body {
   -webkit-user-select: none;
   user-select: none;
   touch-action: none;
+  /* 横スワイプの戻る・引っぱって更新などのナビゲーションを抑制 */
+  overscroll-behavior: none;
+  position: fixed;
+  inset: 0;
 }
 
 /* アプリ本体：縦長領域に収める。広い画面では中央に寄せて最大幅を制限 */

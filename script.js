@@ -57,6 +57,7 @@
   const SOLVER_ITERS = 6;      // 衝突解決の反復回数
   const SUBSTEPS     = 2;      // 1フレームの分割数
   const MAX_OUT_MUL  = 0.6;    // 壁外へ出られる最大量（半径比）。完全脱出を防ぐ
+  const FRAME_W_RATIO = 0.9;   // 枠の横幅比（高さに対して少し狭くする。1.0で正方形）
   const THROW_SPEED   = 1300;  // 投入の基本速度
   const THROW_COOLDOWN= 0.42;  // 連続投入の最小間隔(秒)
 
@@ -127,8 +128,7 @@
   let pointer = { x:0, y:0 };
   let lastPointer = { x:0, y:0 };
   let flickVel = { x:0, y:0 };
-  let pressStart = { x:0, y:0 };       // ジェスチャ開始点
-  let aimDir = { x:0, y:1 };           // 投げる向き（=重力方向）。既定は下（上から落とす）
+  let pressStart = { x:0, y:0 };       // ジェスチャ開始点（タッチした位置）
 
   // ====================================================
   //  初期化・レイアウト
@@ -146,12 +146,12 @@
     const band = Math.min(W, H) * 0.12;        // 外側の帯
     const availW = W - band * 2;
     const availH = H - band * 2;
-    const side = Math.min(availW, availH, 460); // 正方形に近い枠
-    frame.w = side;
+    const side = Math.min(availW, availH, 460); // 基準サイズ（高さ）
     frame.h = side;
-    frame.x = (W - side) / 2;
-    frame.y = (H - side) / 2;
-    base = side;
+    frame.w = side * FRAME_W_RATIO;             // 横幅は少し狭く
+    frame.x = (W - frame.w) / 2;
+    frame.y = (H - frame.h) / 2;
+    base = Math.min(frame.w, frame.h);          // 惑星サイズ等は狭い方(横幅)に合わせる
 
     // 既存惑星の半径を再計算（リサイズ追従）
     for (const p of planets) p.r = p.isMeteor ? p.rMul * base : radiusOf(p.level);
@@ -203,13 +203,16 @@
     setHint('星をフリック／ドラッグして投げ入れよう！<br><b>投げた向きに重力が変わる！</b>');
   }
 
-  // 構え中の惑星を用意。投げる向き(aimDir)の反対側の枠外に配置し、
-  // その向きに飛び込ませる（= aimDir が進入方向＝重力方向になる）。
+  // 次の惑星を用意。待機中は枠の下の外側に「次の惑星」として表示しておく。
+  // タッチすると、その指の位置へ移動して構える。
   function spawnStaging() {
     const r = radiusOf(nextLevel);
-    aimDir = { x: 0, y: 1 };            // 既定は「上から下へ落とす」
-    staging = { level: nextLevel, r, x: 0, y: 0, aim: aimDir };
-    updateStagingPos();
+    staging = {
+      level: nextLevel, r,
+      x: frame.x + frame.w / 2,
+      y: frame.y + frame.h + r + base * 0.05,
+      aim: { x: 0, y: -1 },   // 待機中のヒント矢印（上向き）
+    };
   }
 
   // ====================================================
@@ -227,8 +230,9 @@
     dragging = true;
     pressStart = pointer = lastPointer = getPos(e);
     flickVel = { x: 0, y: 0 };
-    // ジェスチャ開始時は既定の向きのまま（動かしたら向きが決まる）
-    updateStagingPos();
+    // タッチした位置へ惑星を移動（ここから投げ入れる）
+    moveStagingTo(pointer.x, pointer.y);
+    staging.aim = computeAim();
   }
 
   function onMove(e) {
@@ -239,11 +243,9 @@
     flickVel.y = flickVel.y * 0.6 + (p.y - lastPointer.y) * 0.4;
     lastPointer = p;
     pointer = p;
-    // ジェスチャ（開始点→現在）の向きを投げる向きに採用
-    const gx = p.x - pressStart.x, gy = p.y - pressStart.y;
-    const gmag = Math.hypot(gx, gy);
-    if (gmag > base * 0.04) aimDir = { x: gx / gmag, y: gy / gmag };
-    updateStagingPos();
+    // 惑星は指に追従（＝投げ入れ位置）、向きはフリック/ドラッグから決定
+    moveStagingTo(p.x, p.y);
+    staging.aim = computeAim();
   }
 
   function onUp(e) {
@@ -253,34 +255,31 @@
     throwPlanet();
   }
 
-  // aimDir の反対側の枠外（進入位置）へ、構え中の惑星を配置する。
-  // ＝「狙った向きの逆側から飛び込んできて、枠を横切る」見え方になる。
-  function updateStagingPos() {
+  // 構え中の惑星を指の位置へ（画面内にクランプ）
+  function moveStagingTo(px, py) {
     if (!staging) return;
-    const e = computeEntry(aimDir, staging.r);
-    staging.x = e.x;
-    staging.y = e.y;
-    staging.aim = aimDir;
+    const r = staging.r;
+    staging.x = clamp(px, r, W - r);
+    staging.y = clamp(py, r, H - r);
   }
 
-  // 投げる向き aim に対し、その反対側の枠の縁の少し外側（進入点）を返す。
-  function computeEntry(aim, r) {
-    const cx = frame.x + frame.w / 2, cy = frame.y + frame.h / 2;
-    const hw = frame.w / 2, hh = frame.h / 2;
-    const gap = base * 0.04;
-    const d = { x: -aim.x, y: -aim.y };  // 進入側（aimの反対）への方向
-    // 中心から d 方向に伸ばして枠の縁に当たる距離
-    const tx = d.x !== 0 ? hw / Math.abs(d.x) : Infinity;
-    const ty = d.y !== 0 ? hh / Math.abs(d.y) : Infinity;
-    const t = Math.min(tx, ty);
-    const ex = cx + d.x * t, ey = cy + d.y * t;  // 枠の縁の点
-    return { x: ex + d.x * (r + gap), y: ey + d.y * (r + gap) };
+  // 投げる向き（＝重力方向）を求める。
+  // ドラッグ量が十分ならその向き、ほぼ動いていなければ枠の中心方向。
+  function computeAim() {
+    const gx = pointer.x - pressStart.x, gy = pointer.y - pressStart.y;
+    const gmag = Math.hypot(gx, gy);
+    if (gmag > base * 0.04) return { x: gx / gmag, y: gy / gmag };
+    // 動かさずタップ → 枠の中心へ投げ入れる
+    let dx = (frame.x + frame.w / 2) - staging.x;
+    let dy = (frame.y + frame.h / 2) - staging.y;
+    const d = Math.hypot(dx, dy) || 1;
+    return { x: dx / d, y: dy / d };
   }
 
-  // 投入：aimDir 方向へ速度を与えて放つ。重力もその向きへ（任意角度）。
+  // 投入：タッチした位置から、aim 方向へ速度を与えて放つ。重力もその向きへ。
   function throwPlanet() {
     if (!staging) return;
-    const dir = { x: aimDir.x, y: aimDir.y };
+    const dir = computeAim();
 
     // フリック/ドラッグの勢いで少しだけ速くなる
     const flickMag = Math.hypot(flickVel.x, flickVel.y);
@@ -300,7 +299,6 @@
     // 次の惑星を用意（クールダウン後に構える）
     nextLevel = randSpawnLevel();
     staging = null;
-    aimDir = { x: 0, y: 1 };  // 次の既定は下
     cooldown = THROW_COOLDOWN;
   }
 
@@ -1319,6 +1317,31 @@
     window.coroSpawnMeteor = () => { if (running) spawnMeteor(); };
   }
 
+  // iOS Safari はビューポート設定や touch-action を無視してダブルタップ／ピンチで
+  // ズームすることがあるため、JSでもガードする。
+  function preventZoomGestures() {
+    // ダブルタップ：直前のタップから300ms以内の2回目はデフォルト動作（ズーム）を抑止
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) e.preventDefault();
+      lastTouchEnd = now;
+    }, { passive: false });
+
+    // ピンチズーム（gestureイベントはiOS Safari独自）
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(ev =>
+      document.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));
+
+    // ページ全体の touchmove を抑止：
+    //  - 横スワイプによる「戻る」ナビゲーション（iOS/Android）
+    //  - ピンチズーム・スクロール・引っぱって更新
+    // ※デバッグパネル内（スライダー等）だけは通常動作させる
+    document.addEventListener('touchmove', (e) => {
+      if (e.target.closest && e.target.closest('#debugPanel')) return;
+      e.preventDefault();
+    }, { passive: false });
+  }
+
   // ====================================================
   //  起動
   // ====================================================
@@ -1326,6 +1349,7 @@
     bestEl.textContent = best;
     document.getElementById('gearBtn').classList.toggle('muted', !soundOn);
     document.getElementById('gearBtn').textContent = soundOn ? '⚙️' : '🔇';
+    preventZoomGestures();
     bindUI();
     resize();
     openTutorial();          // 最初はチュートリアルから
