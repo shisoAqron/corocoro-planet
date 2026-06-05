@@ -88,7 +88,7 @@
   const METEOR_ANGLE_SPREAD = 0.7; // 中央方向からの角度ブレ(±rad ≈ 40°)。枠を外すこともある
   // 得点が上がるほど出現間隔を短縮（1点あたり METEOR_SPEEDUP 秒ずつ）。
   // 上限（頭打ち）は設けず速くなり続けるが、0以下にならないよう破綻防止の安全下限のみ残す。
-  const METEOR_SPEEDUP = 0.004;     // 例: 500点で -2.0秒
+  const METEOR_SPEEDUP = 0.002;     // 例: 500点で -1.0秒
   const METEOR_INTERVAL_MIN = 0.4;  // 破綻防止の安全下限(秒)。毎フレーム湧きを防ぐだけ
   const METEOR_HP = 5;              // 隣で惑星が合体／投入惑星の衝突でこの回数に達すると壊れる
   const METEOR_BLAST_RANGE_MUL = 3.0; // 破壊時の吹き飛ばし範囲（自半径比）
