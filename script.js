@@ -103,10 +103,13 @@
 
   // はみ出し危険度のしきい値。
   // dangerは「最大まではみ出した惑星の個数」相当（各惑星0〜1の合計）。
-  const WARN_DANGER   = 1.2;   // これ以上で「ピンチ！」警告
-  const OVER_DANGER   = 3.5;   // これを一定時間こえるとゲームオーバー
-  const OVER_TIME     = 1.4;   // 継続秒数
-  const INSTANT_OVER  = 6.0;   // 一気にこえたら即アウト
+  // 危険度＝「壁からのはみ出し合計」と「充填率（枠に対する惑星の占有率）」の両面で判定。
+  const WARN_DANGER   = 1.0;   // はみ出し合計：警告しきい値
+  const OVER_DANGER   = 2.2;   // はみ出し合計：ゲームオーバーしきい値
+  const FILL_WARN     = 0.66;  // 充填率：警告しきい値
+  const FILL_OVER     = 0.78;  // 充填率：ゲームオーバーしきい値（詰まったら確実に終わる）
+  const OVER_TIME     = 1.0;   // 危険状態がこの秒数つづくとゲームオーバー
+  const INSTANT_OVER  = 4.5;   // はみ出しが一気にこれを超えたら即アウト
 
   // ---------------- 状態 ----------------
   let DPR = 1;
@@ -839,7 +842,8 @@
   // ====================================================
   function computeDanger(dt) {
     const L = frame.x, R = frame.x + frame.w, T = frame.y, B = frame.y + frame.h;
-    let danger = 0;
+    let overflow = 0;   // 壁からのはみ出し率の合計
+    let area = 0;       // 枠内の惑星・隕石の占有面積
     for (const p of planets) {
       if (!p.entered) { p.out = 0; continue; }
       // 各壁のはみ出し量の最大
@@ -850,23 +854,25 @@
         T - (p.y - p.r),
         (p.y + p.r) - B
       );
-      // はみ出し率：最大はみ出し量(MAX_OUT_MUL*r)で1.0になるよう正規化
       const ratio = clamp(out / (p.r * MAX_OUT_MUL), 0, 1);
       p.out = ratio;
-      danger += ratio;
+      overflow += ratio;
+      area += Math.PI * p.r * p.r;
     }
+    // 充填率：枠面積に対する占有率（円のランダム充填は ~0.8 で詰まる）
+    const fill = area / (frame.w * frame.h);
 
-    // 警告表示
-    if (danger >= WARN_DANGER) showWarning();
+    // 警告／ゲームオーバーの条件（はみ出し or 詰まり）
+    const warn     = overflow >= WARN_DANGER || fill >= FILL_WARN;
+    const critical = overflow >= OVER_DANGER || fill >= FILL_OVER;
+
+    if (warn) showWarning();
     else hideWarning();
 
-    // ゲームオーバー判定（一定危険が継続 or 一気に超過）
-    if (danger >= OVER_DANGER) {
-      dangerTimer += dt;
-    } else {
-      dangerTimer = Math.max(0, dangerTimer - dt * 1.5);
-    }
-    if (dangerTimer >= OVER_TIME || danger >= INSTANT_OVER) {
+    if (critical) dangerTimer += dt;
+    else dangerTimer = Math.max(0, dangerTimer - dt * 1.5);
+
+    if (dangerTimer >= OVER_TIME || overflow >= INSTANT_OVER) {
       gameOver();
     }
   }
