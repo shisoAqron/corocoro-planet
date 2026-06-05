@@ -127,6 +127,8 @@
   let pointer = { x:0, y:0 };
   let lastPointer = { x:0, y:0 };
   let flickVel = { x:0, y:0 };
+  let pressStart = { x:0, y:0 };       // ジェスチャ開始点
+  let aimDir = { x:0, y:1 };           // 投げる向き（=重力方向）。既定は下（上から落とす）
 
   // ====================================================
   //  初期化・レイアウト
@@ -198,21 +200,16 @@
     hideWarning();
     gameoverEl.classList.add('hidden');
     running = true;
-    setHint('枠の外をさわって、はなすと星が飛びこむよ！<br><b>投げ入れた向きに重力が変わる！</b>');
+    setHint('星をフリック／ドラッグして投げ入れよう！<br><b>投げた向きに重力が変わる！</b>');
   }
 
-  // 構え中の惑星を枠外（デフォルトは下辺の外）に用意
+  // 構え中の惑星を用意。投げる向き(aimDir)の反対側の枠外に配置し、
+  // その向きに飛び込ませる（= aimDir が進入方向＝重力方向になる）。
   function spawnStaging() {
     const r = radiusOf(nextLevel);
-    staging = {
-      level: nextLevel,
-      r,
-      side: 'bottom',
-      x: frame.x + frame.w / 2,
-      y: frame.y + frame.h + r + base * 0.04,
-      dir: { x: 0, y: -1 },  // 内向き
-    };
-    placeStagingFromPointer(staging.x, staging.y); // 初期位置を整える
+    aimDir = { x: 0, y: 1 };            // 既定は「上から下へ落とす」
+    staging = { level: nextLevel, r, x: 0, y: 0, aim: aimDir };
+    updateStagingPos();
   }
 
   // ====================================================
@@ -228,9 +225,10 @@
     if (!running || cooldown > 0 || !staging) return;
     e.preventDefault();
     dragging = true;
-    pointer = lastPointer = getPos(e);
+    pressStart = pointer = lastPointer = getPos(e);
     flickVel = { x: 0, y: 0 };
-    placeStagingFromPointer(pointer.x, pointer.y);
+    // ジェスチャ開始時は既定の向きのまま（動かしたら向きが決まる）
+    updateStagingPos();
   }
 
   function onMove(e) {
@@ -241,7 +239,11 @@
     flickVel.y = flickVel.y * 0.6 + (p.y - lastPointer.y) * 0.4;
     lastPointer = p;
     pointer = p;
-    placeStagingFromPointer(p.x, p.y);
+    // ジェスチャ（開始点→現在）の向きを投げる向きに採用
+    const gx = p.x - pressStart.x, gy = p.y - pressStart.y;
+    const gmag = Math.hypot(gx, gy);
+    if (gmag > base * 0.04) aimDir = { x: gx / gmag, y: gy / gmag };
+    updateStagingPos();
   }
 
   function onUp(e) {
@@ -251,53 +253,38 @@
     throwPlanet();
   }
 
-  // ポインタ位置に応じて、構え中の惑星を「枠の外周の最寄り辺」に貼り付ける。
-  // どの辺に貼り付いたかで進入方向（＝重力方向）が決まる。
-  function placeStagingFromPointer(px, py) {
+  // aimDir の反対側の枠外（進入位置）へ、構え中の惑星を配置する。
+  // ＝「狙った向きの逆側から飛び込んできて、枠を横切る」見え方になる。
+  function updateStagingPos() {
     if (!staging) return;
-    const r = staging.r;
-    const gap = base * 0.03;
-    const L = frame.x, R = frame.x + frame.w, T = frame.y, B = frame.y + frame.h;
-
-    // 枠との位置関係から最寄りの辺を決定
-    let side;
-    if (px < L || px > R || py < T || py > B) {
-      // 枠の外：はみ出している軸の大きい方の辺
-      const dl = L - px, dr = px - R, dt = T - py, db = py - B;
-      const overX = Math.max(dl, dr, 0);
-      const overY = Math.max(dt, db, 0);
-      if (overX >= overY) side = (dl > dr) ? 'left' : 'right';
-      else                side = (dt > db) ? 'top' : 'bottom';
-    } else {
-      // 枠の中：最も近い辺
-      const dl = px - L, dr = R - px, dt = py - T, db = B - py;
-      const m = Math.min(dl, dr, dt, db);
-      side = m === dl ? 'left' : m === dr ? 'right' : m === dt ? 'top' : 'bottom';
-    }
-
-    // 辺に沿った位置（はみ出さないようクランプ）と内向き方向を設定
-    if (side === 'left' || side === 'right') {
-      const y = clamp(py, T + r, B - r);
-      staging.x = side === 'left' ? L - r - gap : R + r + gap;
-      staging.y = y;
-      staging.dir = { x: side === 'left' ? 1 : -1, y: 0 };
-    } else {
-      const x = clamp(px, L + r, R - r);
-      staging.y = side === 'top' ? T - r - gap : B + r + gap;
-      staging.x = x;
-      staging.dir = { x: 0, y: side === 'top' ? 1 : -1 };
-    }
-    staging.side = side;
+    const e = computeEntry(aimDir, staging.r);
+    staging.x = e.x;
+    staging.y = e.y;
+    staging.aim = aimDir;
   }
 
-  // 投入：構え中の惑星に内向き速度を与えて場に放つ。重力もその向きへ。
+  // 投げる向き aim に対し、その反対側の枠の縁の少し外側（進入点）を返す。
+  function computeEntry(aim, r) {
+    const cx = frame.x + frame.w / 2, cy = frame.y + frame.h / 2;
+    const hw = frame.w / 2, hh = frame.h / 2;
+    const gap = base * 0.04;
+    const d = { x: -aim.x, y: -aim.y };  // 進入側（aimの反対）への方向
+    // 中心から d 方向に伸ばして枠の縁に当たる距離
+    const tx = d.x !== 0 ? hw / Math.abs(d.x) : Infinity;
+    const ty = d.y !== 0 ? hh / Math.abs(d.y) : Infinity;
+    const t = Math.min(tx, ty);
+    const ex = cx + d.x * t, ey = cy + d.y * t;  // 枠の縁の点
+    return { x: ex + d.x * (r + gap), y: ey + d.y * (r + gap) };
+  }
+
+  // 投入：aimDir 方向へ速度を与えて放つ。重力もその向きへ（任意角度）。
   function throwPlanet() {
     if (!staging) return;
-    const dir = staging.dir;
+    const dir = { x: aimDir.x, y: aimDir.y };
 
-    // フリック速度の内向き成分を少し加味（勢いよく投げると速い）
-    const flickInward = Math.max(0, flickVel.x * dir.x + flickVel.y * dir.y) * 38;
-    const speed = THROW_SPEED + Math.min(flickInward, 900);
+    // フリック/ドラッグの勢いで少しだけ速くなる
+    const flickMag = Math.hypot(flickVel.x, flickVel.y);
+    const speed = THROW_SPEED + clamp(flickMag * 22, 0, 700);
 
     const p = makePlanet(staging.level, staging.x, staging.y);
     p.vx = dir.x * speed;
@@ -305,7 +292,7 @@
     p.entered = false;   // 枠内に入るまで壁判定をしない
     planets.push(p);
 
-    // 重力方向を進入方向へ切り替え
+    // 重力方向を投げた向きへ切り替え（任意角度）
     setGravity(dir.x, dir.y);
     playThrow();
     spawnTrail(p, dir);
@@ -313,14 +300,18 @@
     // 次の惑星を用意（クールダウン後に構える）
     nextLevel = randSpawnLevel();
     staging = null;
+    aimDir = { x: 0, y: 1 };  // 次の既定は下
     cooldown = THROW_COOLDOWN;
   }
 
+  // 重力方向を任意角度で設定。上部インジケータの矢印を回転表示する。
   function setGravity(x, y) {
-    gravDir = { x, y };
+    const len = Math.hypot(x, y) || 1;
+    gravDir = { x: x / len, y: y / len };
     gravArrowFade = 1.4; // 枠内に大きな矢印を一定時間表示
-    const map = { '1,0':'→', '-1,0':'←', '0,1':'↓', '0,-1':'↑' };
-    gravArrowEl.textContent = map[`${x},${y}`] || '→';
+    const deg = Math.atan2(gravDir.y, gravDir.x) * 180 / Math.PI;
+    gravArrowEl.textContent = '→';
+    gravArrowEl.style.transform = `rotate(${deg}deg)`;
   }
 
   function makePlanet(level, x, y) {
@@ -815,14 +806,26 @@
   // 投入ガイド（構え中）：惑星本体＋内向きの矢印＋点線軌道
   function drawStaging() {
     const s = staging;
+    const aim = s.aim || { x: 0, y: 1 };
     drawPlanetShape(s.x, s.y, s.r, s.level, 0);
 
-    // 内向き矢印
-    const ang = Math.atan2(s.dir.y, s.dir.x);
+    // 投げる向きの点線軌道（惑星から aim 方向へ、枠を横切るように）
+    ctx.save();
+    ctx.strokeStyle = 'rgba(122,240,255,0.5)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 8]);
+    ctx.beginPath();
+    ctx.moveTo(s.x + aim.x * s.r, s.y + aim.y * s.r);
+    ctx.lineTo(s.x + aim.x * base * 0.95, s.y + aim.y * base * 0.95);
+    ctx.stroke();
+    ctx.restore();
+
+    // 投げる向きの矢印
+    const ang = Math.atan2(aim.y, aim.x);
     ctx.save();
     ctx.translate(s.x, s.y);
     ctx.rotate(ang);
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = 0.95;
     ctx.fillStyle = '#7af0ff';
     ctx.shadowColor = '#45e7ff';
     ctx.shadowBlur = 10;
@@ -833,17 +836,6 @@
     ctx.lineTo(off, base*0.03);
     ctx.closePath();
     ctx.fill();
-    ctx.restore();
-
-    // 点線の軌道（枠中心方向ではなく内向きにまっすぐ）
-    ctx.save();
-    ctx.strokeStyle = 'rgba(122,240,255,0.55)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 8]);
-    ctx.beginPath();
-    ctx.moveTo(s.x + s.dir.x * s.r, s.y + s.dir.y * s.r);
-    ctx.lineTo(s.x + s.dir.x * base * 0.5, s.y + s.dir.y * base * 0.5);
-    ctx.stroke();
     ctx.restore();
   }
 
