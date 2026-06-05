@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Mochiy+Pop+One&display=swap');
+  * { margin: 0; box-sizing: border-box; }
+  body { width: 1200px; height: 630px; overflow: hidden; }
+  .card {
+    width: 1200px; height: 630px; position: relative;
+    background:
+      radial-gradient(120% 70% at 18% 18%, #2a1f6e 0%, rgba(42,31,110,0) 55%),
+      radial-gradient(140% 80% at 85% 95%, #3a1a5e 0%, rgba(58,26,94,0) 55%),
+      linear-gradient(180deg, #070726 0%, #141050 55%, #0b0830 100%);
+    font-family: 'Mochiy Pop One', 'Hiragino Maru Gothic ProN', sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 30px;
+  }
+  #stars { position: absolute; inset: 0; }
+  .star { position: absolute; background: #fff; border-radius: 50%; }
+  .title {
+    font-size: 100px; color: #7af0ff; z-index: 2; white-space: nowrap;
+    text-shadow: 0 0 18px rgba(69,231,255,.9), 0 0 44px rgba(69,231,255,.6);
+  }
+  .title .sp { color: #ffd95e; text-shadow: 0 0 16px #ffd95e; font-size: .7em; }
+  .frame {
+    z-index: 2; width: 800px; height: 250px; border: 5px solid #45e7ff; border-radius: 30px;
+    box-shadow: 0 0 32px rgba(69,231,255,.7), inset 0 0 26px rgba(69,231,255,.2);
+    display: flex; align-items: center; justify-content: center; gap: 28px;
+    background: rgba(40,70,160,.12);
+  }
+  .tag {
+    z-index: 2; font-size: 42px; color: #fff;
+    background: rgba(20,16,70,.6); border: 2px solid rgba(90,160,255,.6);
+    padding: 12px 34px; border-radius: 999px;
+  }
+  .tag b { color: #ffd95e; text-shadow: 0 0 12px #ffd95e; }
+  .planet { position: relative; border-radius: 50%; }
+  .planet .e { position: absolute; background: #fff; border-radius: 50%; top: 33%; }
+  .planet .e.l { left: 23%; } .planet .e.r { right: 23%; }
+  .planet .e::after { content: ""; position: absolute; background: #222; border-radius: 50%; width: 55%; height: 55%; left: 23%; top: 26%; }
+  .planet .m { position: absolute; left: 50%; top: 52%; transform: translateX(-50%); border: 3px solid #3a2230; border-top: none; border-radius: 0 0 60px 60px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div id="stars"></div>
+    <div class="title"><span class="sp">✦</span> ころころ星あつめ <span class="sp">✦</span></div>
+    <div class="frame" id="frame"></div>
+    <div class="tag"><b>重力</b>をあやつって合体させろ！</div>
+  </div>
+  <script>
+    // 背景の星
+    const s = document.getElementById('stars');
+    for (let i = 0; i < 80; i++) {
+      const d = document.createElement('div'); d.className = 'star';
+      const r = Math.random() * 2 + 1;
+      d.style.width = d.style.height = r + 'px';
+      d.style.left = Math.random() * 1200 + 'px';
+      d.style.top = Math.random() * 630 + 'px';
+      d.style.opacity = (Math.random() * 0.6 + 0.3);
+      s.appendChild(d);
+    }
+    // かわいい惑星（顔つき）
+    const defs = [
+      { s: 120, c1: '#bfe6ff', c2: '#3f97ff', c3: '#1c5fd0' },
+      { s: 150, c1: '#ffd0a8', c2: '#ff7a52', c3: '#c83a2a' },
+      { s: 190, c1: '#ffe9b8', c2: '#e6b362', c3: '#b07c2a' },
+      { s: 150, c1: '#bff0ff', c2: '#3aa0ff', c3: '#1860c0' },
+      { s: 120, c1: '#d7c4ff', c2: '#9b6bff', c3: '#5a2fb0' },
+    ];
+    const f = document.getElementById('frame');
+    for (const d of defs) {
+      const p = document.createElement('div'); p.className = 'planet';
+      p.style.width = p.style.height = d.s + 'px';
+      p.style.background = 'radial-gradient(circle at 32% 30%,' + d.c1 + ' 0%,' + d.c2 + ' 55%,' + d.c3 + ' 100%)';
+      p.style.boxShadow = '0 0 24px ' + d.c2;
+      const es = d.s * 0.18;
+      for (const side of ['l', 'r']) {
+        const e = document.createElement('div'); e.className = 'e ' + side;
+        e.style.width = e.style.height = es + 'px';
+        p.appendChild(e);
+      }
+      const m = document.createElement('div'); m.className = 'm';
+      m.style.width = (d.s * 0.30) + 'px'; m.style.height = (d.s * 0.16) + 'px';
+      p.appendChild(m);
+      f.appendChild(p);
+    }
+  </script>
+</body>
+</html>
