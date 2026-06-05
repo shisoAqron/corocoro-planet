@@ -137,6 +137,7 @@
   let lastPointer = { x:0, y:0 };
   let flickVel = { x:0, y:0 };
   let pressStart = { x:0, y:0 };       // ジェスチャ開始点（タッチした位置）
+  let lastThrow = null;                // 前回の投入位置・角度（2投目以降の構えに使う）
 
   // ====================================================
   //  初期化・レイアウト
@@ -200,26 +201,37 @@
     dangerTimer = 0;
     meteorTimer = meteorIntervalNow();
     shake = 0;
-    gravDir = { x: 1, y: 0 };
-    gravArrowFade = 0;
+    lastThrow = null;          // 初回は上から下へ
     nextLevel = randSpawnLevel();
     updateScoreUI();
     spawnStaging();
     hideWarning();
     gameoverEl.classList.add('hidden');
     running = true;
-    setHint('星をフリック／ドラッグして投げ入れよう！<br><b>投げた向きに重力が変わる！</b>');
+    setGravity(0, 1);          // 既定の重力は下（上から落とす）
+    gravArrowFade = 0;         // 開始時は枠中央の大矢印は出さない
+    setHint('上から下へ 星を投げ入れよう！<br><b>投げた向きに重力が変わる！</b>');
   }
 
-  // 次の惑星を用意。待機中は枠の下の外側に「次の惑星」として表示しておく。
-  // タッチすると、その指の位置へ移動して構える。
+  // 次の惑星を用意。
+  //  初回：枠の上に構え、上から下へ（既定）。
+  //  2投目以降：前回の投入位置・角度に構える。
   function spawnStaging() {
     const r = radiusOf(nextLevel);
+    if (lastThrow) {
+      staging = {
+        level: nextLevel, r,
+        x: lastThrow.x, y: lastThrow.y,
+        aim: { x: lastThrow.aim.x, y: lastThrow.aim.y },
+      };
+      moveStagingTo(lastThrow.x, lastThrow.y); // 新しい半径で枠外へクランプし直す
+      return;
+    }
     staging = {
       level: nextLevel, r,
       x: frame.x + frame.w / 2,
-      y: frame.y + frame.h + r + base * 0.05,
-      aim: { x: 0, y: -1 },   // 待機中のヒント矢印（上向き）
+      y: frame.y - r - base * 0.05,
+      aim: { x: 0, y: 1 },    // 待機中のヒント矢印（下向き）
     };
   }
 
@@ -285,12 +297,17 @@
   }
 
   // 投げる向き（＝重力方向）を求める。
-  // ドラッグ量が十分ならその向き、ほぼ動いていなければ枠の中心方向。
+  // ドラッグ量が十分ならその向き、ほぼ動いていなければ構えている向き
+  // （初回は下／2投目以降は前回の角度）をそのまま使う。
   function computeAim() {
     const gx = pointer.x - pressStart.x, gy = pointer.y - pressStart.y;
     const gmag = Math.hypot(gx, gy);
     if (gmag > base * 0.04) return { x: gx / gmag, y: gy / gmag };
-    // 動かさずタップ → 枠の中心へ投げ入れる
+    if (staging && staging.aim) {
+      const a = staging.aim, d = Math.hypot(a.x, a.y) || 1;
+      return { x: a.x / d, y: a.y / d };
+    }
+    // フォールバック：枠の中心方向（通常は到達しない）
     let dx = (frame.x + frame.w / 2) - staging.x;
     let dy = (frame.y + frame.h / 2) - staging.y;
     const d = Math.hypot(dx, dy) || 1;
@@ -319,7 +336,8 @@
     playThrow();
     spawnTrail(p, dir);
 
-    // 次の惑星を用意（クールダウン後に構える）
+    // 次の惑星を用意（クールダウン後に構える）。2投目以降はこの位置・角度に構える。
+    lastThrow = { x: staging.x, y: staging.y, aim: { x: dir.x, y: dir.y } };
     nextLevel = randSpawnLevel();
     staging = null;
     cooldown = THROW_COOLDOWN;

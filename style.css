@@ -310,14 +310,14 @@ html, body {
 
 .tut-diagram {
   position: relative;
-  height: 170px;
+  height: 184px;
   margin-bottom: 8px;
 }
 .tut-frame {
   position: absolute;
-  top: 18px; left: 50%;
+  top: 44px; left: 50%;
   transform: translateX(-50%);
-  width: 150px; height: 130px;
+  width: 146px; height: 124px;
   border: 3px solid var(--neon);
   border-radius: 12px;
   box-shadow: 0 0 16px rgba(69,231,255,0.6), inset 0 0 12px rgba(69,231,255,0.2);
@@ -342,15 +342,18 @@ html, body {
   filter: drop-shadow(0 0 8px var(--gold));
   animation: nudgeR 1s infinite alternate;
 }
-.tut-grav-arrow.up { animation: nudgeU 1s infinite alternate; }
-@keyframes nudgeR { from{transform:translate(-60%,-50%)} to{transform:translate(-40%,-50%)} }
-@keyframes nudgeU { from{transform:translate(-50%,-40%)} to{transform:translate(-50%,-60%)} }
+.tut-grav-arrow.up   { animation: nudgeU 1s infinite alternate; }
+.tut-grav-arrow.down { animation: nudgeDn 1s infinite alternate; }
+@keyframes nudgeR  { from{transform:translate(-60%,-50%)} to{transform:translate(-40%,-50%)} }
+@keyframes nudgeU  { from{transform:translate(-50%,-40%)} to{transform:translate(-50%,-60%)} }
+@keyframes nudgeDn { from{transform:translate(-50%,-60%)} to{transform:translate(-50%,-40%)} }
 
+/* 反対側から枠へ入ってくる惑星（1・2ページ共通の配置ルール） */
 .tut-incoming { position: absolute; font-size: 26px; }
-.tut-incoming.left { left: 0; top: 70px; }
-.tut-incoming.bottom { left: 50%; transform: translateX(-50%); bottom: 0; }
-.tut-trail { color: var(--neon-soft); }
-.tut-trail.up { display: inline-block; transform: rotate(-90deg); }
+/* 枠の少し外側に配置（枠は中央・幅146px＝左右端は 50%±73px、上端は 44px） */
+.tut-incoming.left { left: 50%; top: 106px; transform: translate(calc(-50% - 98px), -50%); } /* 左から（→右投げ） */
+.tut-incoming.top  { left: 50%; top: 4px;   transform: translateX(-50%); }                   /* 上から（↓下投げ） */
+.tut-planets.bottom { bottom: 6px; left: 50%; transform: translateX(-50%); text-align: center; width: 120px; }
 
 .tut-diagram.simple { display: grid; place-items: center; }
 .tut-merge { font-size: 30px; letter-spacing: 2px; filter: drop-shadow(0 0 8px var(--neon)); }
@@ -358,6 +361,16 @@ html, body {
 .tut-text { font-size: 15px; line-height: 1.55; margin: 4px 0 0; }
 .tut-text .accent { color: var(--gold); font-size: 1.15em; text-shadow: 0 0 8px rgba(255,217,94,0.6); }
 .tut-text b { color: var(--neon-soft); }
+
+/* 重力の例チップ（右・下など） */
+.tut-examples { display: flex; flex-direction: column; gap: 6px; align-items: center; margin-top: 10px; }
+.tut-chip {
+  font-size: 13px;
+  background: rgba(40, 60, 140, 0.4);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 4px 14px;
+}
 
 .tut-controls { margin-top: 14px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .tut-dots { display: flex; gap: 8px; }

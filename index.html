@@ -84,28 +84,32 @@
         <h2 class="modal-title">✦ あそびかた ✦</h2>
 
         <div class="tut-slides">
-          <!-- スライド1: 左から -->
+          <!-- スライド1: 上から下へ投げ入れる（重力には触れない） -->
           <div class="tut-slide active" data-slide="0">
+            <div class="tut-diagram">
+              <div class="tut-frame">
+                <div class="tut-planets bottom">🪐🌍🔵🔴⭐</div>
+                <div class="tut-grav-arrow down">⬇️</div>
+              </div>
+              <div class="tut-incoming top">🔵</div>
+            </div>
+            <p class="tut-text"><b>フリックして</b><br>星をなげいれよう！</p>
+          </div>
+
+          <!-- スライド2: 投げた向きで重力が変わる（右・下の例） -->
+          <div class="tut-slide" data-slide="1">
             <div class="tut-diagram">
               <div class="tut-frame">
                 <div class="tut-planets right">🪐🌍🔵🔴</div>
                 <div class="tut-grav-arrow">➡️</div>
               </div>
-              <div class="tut-incoming left">🔵<span class="tut-trail">⟶</span></div>
+              <div class="tut-incoming left">🔵</div>
             </div>
-            <p class="tut-text">タッチした位置から<b>右へフリック</b>すると…<br><span class="accent">重力は右へ！</span><br>星たちが右に寄るよ。</p>
-          </div>
-
-          <!-- スライド2: 下から -->
-          <div class="tut-slide" data-slide="1">
-            <div class="tut-diagram">
-              <div class="tut-frame">
-                <div class="tut-planets top">🪐🌍🔵🔴</div>
-                <div class="tut-grav-arrow up">⬆️</div>
-              </div>
-              <div class="tut-incoming bottom">🔵<span class="tut-trail up">⟶</span></div>
+            <p class="tut-text"><span class="accent">投げた向きに重力が変わる！</span></p>
+            <div class="tut-examples">
+              <span class="tut-chip">➡️ 右に投げる → 重力は右</span>
+              <span class="tut-chip">⬇️ 下に投げる → 重力は下</span>
             </div>
-            <p class="tut-text">タッチした位置から<b>上へフリック</b>すると…<br><span class="accent">重力は上へ！</span><br>星たちが上に寄るよ。<br>※ななめ方向にも投げられるよ！</p>
           </div>
 
           <!-- スライド3: 合体&はみ出し -->
