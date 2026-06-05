@@ -79,12 +79,15 @@
   // デバッグ用に有無と頻度を調整できる（画面の🛠パネル / コンソール window.coroDebug）。
   const DEBUG = {
     meteorsEnabled: true,   // 隕石を出すか
-    meteorInterval: 6,      // 平均出現間隔(秒)
+    meteorInterval: 5,      // 基準の平均出現間隔(秒)。得点で短くなる
   };
   window.coroDebug = DEBUG; // コンソールから coroDebug.meteorInterval = 3 等で調整可
 
   const METEOR_SPEED = 1.1;  // 飛来速度（base比 /秒）。ゆっくりめ
   const METEOR_ANGLE_SPREAD = 0.7; // 中央方向からの角度ブレ(±rad ≈ 40°)。枠を外すこともある
+  // 得点が上がるほど出現間隔を短縮（1点あたり METEOR_SPEEDUP 秒ずつ、下限 METEOR_INTERVAL_MIN）
+  const METEOR_SPEEDUP = 0.004;     // 例: 500点で -2.0秒
+  const METEOR_INTERVAL_MIN = 1.5;  // 最短間隔(秒)
   // グラフィックパターン（色違いの岩）。表面の凹凸・クレーターは個体ごとにランダム生成。
   const METEOR_STYLES = [
     { c1:'#a89884', c2:'#6f5f4d', c3:'#3e342a' }, // 茶色い岩
@@ -191,7 +194,7 @@
     score = 0;
     cooldown = 0;
     dangerTimer = 0;
-    meteorTimer = DEBUG.meteorInterval;
+    meteorTimer = meteorIntervalNow();
     shake = 0;
     gravDir = { x: 1, y: 0 };
     gravArrowFade = 0;
@@ -625,8 +628,13 @@
     if (meteorTimer <= 0) {
       spawnMeteor();
       // 間隔は ±30% でばらつかせる
-      meteorTimer = DEBUG.meteorInterval * (0.7 + Math.random() * 0.6);
+      meteorTimer = meteorIntervalNow() * (0.7 + Math.random() * 0.6);
     }
+  }
+
+  // 現在の出現間隔（秒）。基準値から得点に応じて短縮し、下限でクランプ。
+  function meteorIntervalNow() {
+    return Math.max(METEOR_INTERVAL_MIN, DEBUG.meteorInterval - score * METEOR_SPEEDUP);
   }
 
   function rand(a, b) { return a + Math.random() * (b - a); }
@@ -1365,7 +1373,7 @@
 
     chkMeteor.addEventListener('change', () => {
       DEBUG.meteorsEnabled = chkMeteor.checked;
-      if (DEBUG.meteorsEnabled) meteorTimer = DEBUG.meteorInterval; // すぐ降らせすぎない
+      if (DEBUG.meteorsEnabled) meteorTimer = meteorIntervalNow(); // すぐ降らせすぎない
     });
 
     interval.addEventListener('input', () => {
