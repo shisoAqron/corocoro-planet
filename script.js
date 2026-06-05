@@ -56,7 +56,8 @@
   const DAMPING      = 0.86;   // 速度の減衰（ねっとり詰まる感じ）
   const WALL_SOFT    = 0.45;   // 壁の押し戻し率(0-1)。小さいほど“はみ出しやすい”
   const SOLVER_ITERS = 6;      // 衝突解決の反復回数
-  const SUBSTEPS     = 2;      // 1フレームの分割数
+  const SUBSTEPS     = 2;      // 1フレームの最小分割数
+  const MAX_SUBSTEPS = 10;     // 高速な惑星のすり抜け防止用の最大分割数
   const MAX_OUT_MUL  = 0.6;    // 壁外へ出られる最大量（半径比）。完全脱出を防ぐ
   const FRAME_W_RATIO = 0.9;   // 枠の横幅比（高さに対して少し狭くする。1.0で正方形）
   const THROW_SPEED   = 1300;  // 投入の基本速度
@@ -384,8 +385,22 @@
     }
 
     if (running) {
-      const sub = dt / SUBSTEPS;
-      for (let s = 0; s < SUBSTEPS; s++) step(sub);
+      // 速い惑星（投げた直後など）が他をすり抜けないよう、
+      // 「1サブステップでの移動量が最小惑星の半径の半分以下」になるよう分割数を自動調整。
+      let maxSpeed = 0;
+      for (const p of planets) {
+        const sp = Math.hypot(p.vx, p.vy);
+        if (sp > maxSpeed) maxSpeed = sp;
+      }
+      const maxMove = base * PLANETS[0].rMul * 0.5; // 最小惑星の半径の半分
+      let nSub = SUBSTEPS;
+      if (maxMove > 0 && maxSpeed * dt > maxMove) {
+        nSub = Math.ceil((maxSpeed * dt) / maxMove);
+      }
+      nSub = clamp(nSub, SUBSTEPS, MAX_SUBSTEPS);
+
+      const sub = dt / nSub;
+      for (let s = 0; s < nSub; s++) step(sub);
       handleMerges();
       updateBlackholes(dt);   // 寿命カウント＆爆発
       updateMeteors(dt);      // 隕石の回転・出現
