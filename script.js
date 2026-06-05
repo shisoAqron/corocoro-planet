@@ -49,6 +49,7 @@
   const MAX_LEVEL = PLANETS.length - 1;            // = ブラックホール
   // 合体結果レベルごとの得点（最後はブラックホール誕生ボーナス）
   const SCORE_FOR = [0, 1, 3, 6, 10, 15, 21, 50];
+  const MISS_PENALTY = 15;   // 投げた惑星が枠に入らず画面外へ消えたときの減点
 
   // ---------------- 物理パラメータ（遊びやすさ優先で調整） ----------------
   const GRAVITY      = 2600;   // 重力加速度(px/s^2 相当)
@@ -255,12 +256,25 @@
     throwPlanet();
   }
 
-  // 構え中の惑星を指の位置へ（画面内にクランプ）
+  // 構え中の惑星を指の位置へ。ただし「枠の中からは投げない」ため、
+  // 枠の内側に入った場合は最寄りの辺の外側へ押し出す（＝必ず枠外から投げる）。
   function moveStagingTo(px, py) {
     if (!staging) return;
     const r = staging.r;
-    staging.x = clamp(px, r, W - r);
-    staging.y = clamp(py, r, H - r);
+    let x = clamp(px, r, W - r);
+    let y = clamp(py, r, H - r);
+
+    const L = frame.x, R = frame.x + frame.w, T = frame.y, B = frame.y + frame.h;
+    if (x > L && x < R && y > T && y < B) {        // 中心が枠内 → 枠外へ
+      const dl = x - L, dr = R - x, dt = y - T, db = B - y;
+      const m = Math.min(dl, dr, dt, db);
+      if      (m === dl) x = L - r;                // 最寄りの辺の外側（惑星が枠外に出る位置）
+      else if (m === dr) x = R + r;
+      else if (m === dt) y = T - r;
+      else               y = B + r;
+    }
+    staging.x = x;
+    staging.y = y;
   }
 
   // 投げる向き（＝重力方向）を求める。
@@ -281,6 +295,7 @@
     if (!staging) return;
     const dir = computeAim();
 
+    // 枠外へ投げるのは許可（入らなければ後述の checkMissedThrows で減点）。
     // フリック/ドラッグの勢いで少しだけ速くなる
     const flickMag = Math.hypot(flickVel.x, flickVel.y);
     const speed = THROW_SPEED + clamp(flickMag * 22, 0, 700);
@@ -289,6 +304,7 @@
     p.vx = dir.x * speed;
     p.vy = dir.y * speed;
     p.entered = false;   // 枠内に入るまで壁判定をしない
+    p.thrown = true;     // 投げた惑星（枠外へ消えたら減点対象）
     planets.push(p);
 
     // 重力方向を投げた向きへ切り替え（任意角度）
@@ -300,6 +316,28 @@
     nextLevel = randSpawnLevel();
     staging = null;
     cooldown = THROW_COOLDOWN;
+  }
+
+  // (x,y) から dir 方向のレイが枠の矩形に当たるか（＝惑星の中心が枠内に入りうるか）
+  function willEnterFrame(x, y, dir) {
+    const L = frame.x, R = frame.x + frame.w, T = frame.y, B = frame.y + frame.h;
+    if (x >= L && x <= R && y >= T && y <= B) return true; // 始点が枠内
+    let tmin = 0, tmax = Infinity;
+    if (Math.abs(dir.x) < 1e-6) {
+      if (x < L || x > R) return false;
+    } else {
+      let t1 = (L - x) / dir.x, t2 = (R - x) / dir.x;
+      if (t1 > t2) { const s = t1; t1 = t2; t2 = s; }
+      tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+    }
+    if (Math.abs(dir.y) < 1e-6) {
+      if (y < T || y > B) return false;
+    } else {
+      let t1 = (T - y) / dir.y, t2 = (B - y) / dir.y;
+      if (t1 > t2) { const s = t1; t1 = t2; t2 = s; }
+      tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+    }
+    return tmax >= tmin && tmax > 0;
   }
 
   // 重力方向を任意角度で設定。上部インジケータの矢印を回転表示する。
@@ -348,6 +386,7 @@
       handleMerges();
       updateBlackholes(dt);   // 寿命カウント＆爆発
       updateMeteors(dt);      // 隕石の回転・出現
+      checkMissedThrows();    // 枠に入らず外へ消えた投入は減点
       computeDanger(dt);
     }
 
@@ -640,10 +679,28 @@
     };
   }
 
-  function addScore(pts, x, y) {
+  // 投げた惑星が枠に入らないまま画面外へ消えたら減点して除去する。
+  function checkMissedThrows() {
+    const m = base * 0.8;
+    let changed = false;
+    for (const p of planets) {
+      if (p.isMeteor || p.blackhole || p.entered || !p.thrown) continue;
+      if (p.x < -m || p.x > W + m || p.y < -m || p.y > H + m) {
+        p.dead = true;
+        changed = true;
+        addScore(-MISS_PENALTY, clamp(p.x, 0, W), clamp(p.y, 0, H), '#ff6b7a');
+        playMiss();
+      }
+    }
+    if (changed) planets = planets.filter(q => !q.dead);
+  }
+
+  function addScore(pts, x, y, color) {
     score += pts;
+    if (score < 0) score = 0;       // スコアはマイナスにしない
     updateScoreUI();
-    scorePops.push({ x, y, txt: '+' + pts, life: 1, vy: -base * 0.6 });
+    const txt = (pts >= 0 ? '+' : '') + pts;
+    scorePops.push({ x, y, txt, life: 1, vy: -base * 0.6, color: color || '#ffd95e' });
   }
 
   function updateScoreUI() {
@@ -807,9 +864,15 @@
     const aim = s.aim || { x: 0, y: 1 };
     drawPlanetShape(s.x, s.y, s.r, s.level, 0);
 
+    // この向きで枠に入るか（入らないなら赤＝投げられない警告）
+    const ok = willEnterFrame(s.x, s.y, aim);
+    const lineCol = ok ? 'rgba(122,240,255,0.5)' : 'rgba(255,90,108,0.7)';
+    const arrowCol = ok ? '#7af0ff' : '#ff5e6c';
+    const glowCol  = ok ? '#45e7ff' : '#ff5e6c';
+
     // 投げる向きの点線軌道（惑星から aim 方向へ、枠を横切るように）
     ctx.save();
-    ctx.strokeStyle = 'rgba(122,240,255,0.5)';
+    ctx.strokeStyle = lineCol;
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 8]);
     ctx.beginPath();
@@ -824,8 +887,8 @@
     ctx.translate(s.x, s.y);
     ctx.rotate(ang);
     ctx.globalAlpha = 0.95;
-    ctx.fillStyle = '#7af0ff';
-    ctx.shadowColor = '#45e7ff';
+    ctx.fillStyle = arrowCol;
+    ctx.shadowColor = glowCol;
     ctx.shadowBlur = 10;
     const off = s.r + base * 0.02;
     ctx.beginPath();
@@ -1136,9 +1199,10 @@
     ctx.textAlign = 'center';
     ctx.font = `bold ${Math.round(base*0.07)}px 'Baloo 2', sans-serif`;
     for (const s of scorePops) {
+      const col = s.color || '#ffd95e';
       ctx.globalAlpha = Math.max(0, s.life);
-      ctx.fillStyle = '#ffd95e';
-      ctx.shadowColor = '#ffd95e'; ctx.shadowBlur = 10;
+      ctx.fillStyle = col;
+      ctx.shadowColor = col; ctx.shadowBlur = 10;
       ctx.fillText(s.txt, s.x, s.y);
     }
     ctx.globalAlpha = 1; ctx.shadowBlur = 0;
@@ -1209,6 +1273,8 @@
   function playBlackholeBorn() { beep(180, 0.3, 'sawtooth', 0.18); beep(110, 0.55, 'sine', 0.14); }
   // ブラックホール爆発：低くうなって弾ける
   function playBlackholePop() { beep(90, 0.45, 'sawtooth', 0.26); setTimeout(()=>{ beep(60, 0.6, 'triangle', 0.22); beep(520, 0.18, 'sine', 0.16); }, 70); }
+  // 枠に入らず減点：下降するブザー
+  function playMiss() { beep(300, 0.14, 'sawtooth', 0.2); setTimeout(()=>beep(180, 0.22, 'sawtooth', 0.2), 90); }
 
   // ====================================================
   //  メインループ
