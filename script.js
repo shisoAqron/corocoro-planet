@@ -89,6 +89,9 @@
   // 得点が上がるほど出現間隔を短縮（1点あたり METEOR_SPEEDUP 秒ずつ、下限 METEOR_INTERVAL_MIN）
   const METEOR_SPEEDUP = 0.004;     // 例: 500点で -2.0秒
   const METEOR_INTERVAL_MIN = 1.5;  // 最短間隔(秒)
+  const METEOR_HP = 5;              // 隣で惑星が合体／投入惑星の衝突でこの回数に達すると壊れる
+  const METEOR_BLAST_RANGE_MUL = 3.0; // 破壊時の吹き飛ばし範囲（自半径比）
+  const METEOR_BLAST_SPEED = 1.6;     // 破壊時の吹き飛ばし強さ（base比の最大速度）
   // グラフィックパターン（色違いの岩）。表面の凹凸・クレーターは個体ごとにランダム生成。
   const METEOR_STYLES = [
     { c1:'#a89884', c2:'#6f5f4d', c3:'#3e342a' }, // 茶色い岩
@@ -481,6 +484,9 @@
       if (dist === 0) { b.x += 0.5; } // 完全重なり回避
       return;
     }
+    // 投げた惑星が何かにぶつかった瞬間の処理（隕石なら耐久を1削る）
+    handleProjectileImpact(a, b);
+
     const overlap = min - dist;
     const nx = dx / dist, ny = dy / dist;
     // 質量 = 面積比。大きい惑星ほど動きにくい
@@ -500,6 +506,17 @@
       b.vx -= nx * imp * (ma / total);
       b.vy -= ny * imp * (ma / total);
     }
+  }
+
+  // 投げた惑星(projectile)が最初に何かへ衝突した瞬間に1回だけ呼ばれる。
+  // 相手が隕石なら耐久を1削る。以後は通常の惑星として扱う（多重ヒット防止）。
+  function handleProjectileImpact(a, b) {
+    let proj = null, other = null;
+    if (a.thrown && !a.isMeteor) { proj = a; other = b; }
+    else if (b.thrown && !b.isMeteor) { proj = b; other = a; }
+    if (!proj) return;
+    proj.thrown = false;                 // 着弾＝もう飛翔体ではない
+    if (other.isMeteor && !other.dead) hitMeteor(other);
   }
 
   // やわらかい壁：はみ出しても WALL_SOFT 分しか戻さない＝混むとはみ出す。
@@ -561,6 +578,9 @@
     a.dead = b.dead = true;
     const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
 
+    // 隣で合体が起きた隕石にダメージ（3回で破壊）
+    damageAdjacentMeteors(a, b);
+
     // ブラックホール同士は合体させない（誕生直後に弾ける一過性の存在のため）
     const newLevel = a.level + 1;
     const np = makePlanet(newLevel, mx, my);
@@ -582,6 +602,52 @@
       shake = Math.min(6, 2 + newLevel);
       playMerge(0.7 + newLevel * 0.05);
     }
+  }
+
+  // 合体した2惑星(a,b)に接している隕石へダメージ。METEOR_HP 回で破壊。
+  function damageAdjacentMeteors(a, b) {
+    const slop = base * 0.04;
+    for (const m of planets) {
+      if (!m.isMeteor || m.dead) continue;
+      const touchA = Math.hypot(m.x - a.x, m.y - a.y) <= m.r + a.r + slop;
+      const touchB = Math.hypot(m.x - b.x, m.y - b.y) <= m.r + b.r + slop;
+      if (touchA || touchB) hitMeteor(m);
+    }
+  }
+
+  function hitMeteor(m) {
+    m.hits = (m.hits || 0) + 1;
+    if (m.hits >= METEOR_HP) {
+      breakMeteor(m);
+    } else {
+      // ひびが入る：かけらが少し飛ぶ
+      burst(m.x, m.y, '#cfc2a8', 6, 0.4);
+      shake = Math.max(shake, 3);
+      playMeteorCrack();
+    }
+  }
+
+  function breakMeteor(m) {
+    m.dead = true;   // handleMerges 側でまとめて除去される
+
+    // 周りを軽く吹き飛ばす（近いほど強く、範囲外はゼロ）
+    const R = m.r * METEOR_BLAST_RANGE_MUL;
+    const power = base * METEOR_BLAST_SPEED;
+    for (const p of planets) {
+      if (p === m || p.dead) continue;
+      const dx = p.x - m.x, dy = p.y - m.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d < R) {
+        const f = (1 - d / R) * power;
+        p.vx += (dx / d) * f;
+        p.vy += (dy / d) * f;
+      }
+    }
+
+    burst(m.x, m.y, '#8a7a64', 16, 0.7);
+    burst(m.x, m.y, '#cfc2a8', 10, 0.5);
+    shake = Math.max(shake, 6);
+    playMeteorBreak();
   }
 
   // ブラックホールの寿命管理。寿命が尽きたら爆発させる。
@@ -692,10 +758,24 @@
     for (let i = 0; i < cn; i++) {
       craters.push({ a: Math.random() * Math.PI * 2, d: Math.random() * 0.5, s: 0.12 + Math.random() * 0.16 });
     }
+    // ダメージ表示用のひび（半径比で保持。被弾数ぶん表示）。最大 METEOR_HP-1 本。
+    const cracks = [];
+    for (let i = 0; i < METEOR_HP - 1; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const steps = 3 + ((Math.random() * 2) | 0);
+      const seg = [];
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const rad = t * (0.85 + Math.random() * 0.1);
+        const ang = a + (Math.random() - 0.5) * 0.18;
+        seg.push({ fx: Math.cos(ang) * rad, fy: Math.sin(ang) * rad });
+      }
+      cracks.push(seg);
+    }
     return {
       isMeteor: true, level: -1,
-      x, y, vx: 0, vy: 0, r, rMul, style, bumps, craters,
-      entered: false, out: 0,
+      x, y, vx: 0, vy: 0, r, rMul, style, bumps, craters, cracks,
+      entered: false, out: 0, hits: 0,
       spin: Math.random() * Math.PI * 2,
       spinV: (Math.random() - 0.5) * 4,
       id: Math.random(),
@@ -1021,6 +1101,27 @@
       circleAt(cx - c.s*r*0.3, cy - c.s*r*0.3, c.s * r * 0.7);
     }
 
+    // ダメージのひび（被弾数ぶん表示）。割れが進むほど濃く・太く。
+    const hits = p.hits || 0;
+    if (hits > 0 && p.cracks) {
+      // 被弾で全体がやや暗く（傷んだ感じ）
+      ctx.fillStyle = `rgba(20,12,6,${0.12 * hits})`;
+      circleAt(0, 0, r);
+      ctx.strokeStyle = 'rgba(15,10,6,0.9)';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (let i = 0; i < hits && i < p.cracks.length; i++) {
+        const seg = p.cracks[i];
+        ctx.lineWidth = Math.max(1, r * (0.05 + i * 0.02));
+        ctx.beginPath();
+        for (let j = 0; j < seg.length; j++) {
+          const px = seg[j].fx * r, py = seg[j].fy * r;
+          j ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+        ctx.stroke();
+      }
+    }
+
     // はみ出し中の危険オーバーレイ
     if (p.out > 0.05) {
       ctx.globalAlpha = Math.min(0.5, p.out);
@@ -1298,6 +1399,9 @@
   function playBlackholePop() { beep(90, 0.45, 'sawtooth', 0.26); setTimeout(()=>{ beep(60, 0.6, 'triangle', 0.22); beep(520, 0.18, 'sine', 0.16); }, 70); }
   // 枠に入らず減点：下降するブザー
   function playMiss() { beep(300, 0.14, 'sawtooth', 0.2); setTimeout(()=>beep(180, 0.22, 'sawtooth', 0.2), 90); }
+  // 隕石のひび／破壊：硬い「コツッ」と「パキッ」
+  function playMeteorCrack() { beep(260, 0.06, 'square', 0.14); }
+  function playMeteorBreak() { beep(160, 0.12, 'square', 0.2); setTimeout(()=>beep(90, 0.18, 'sawtooth', 0.16), 50); }
 
   // ====================================================
   //  メインループ
